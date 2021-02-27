@@ -1,6 +1,8 @@
 import {Response, Request, response} from "express"
 import {resolve} from 'path'
 import { getCustomRepository } from "typeorm"
+import { AppError } from "../errors/AppError"
+import { SurveyUser } from "../models/SurveyUser"
 import { SurveryRepository } from "../repositories/SurveysRespository"
 import { SurveysUsersRepository } from "../repositories/SurveysUsersRespository"
 import { UserRepository } from "../repositories/UserRespository"
@@ -16,9 +18,10 @@ class SendMailController {
         const user = await userRepository.findOne({email})
         
         if(!user){
-            return res.status(400).json({
-                error: "User does not exists",
-            });
+            throw new AppError("User does not exists")
+            // return res.status(400).json({
+            //     error: "User does not exists",
+            // });
         }
 
 
@@ -26,27 +29,31 @@ class SendMailController {
         const survey = await surveysRepository.findOne({id: survey_id})
 
         if(!survey){
-            return res.status(400).json({
-                error: "Survey does not exists",
-            })
+            throw new AppError("Survey does not exists",)
+            // return res.status(400).json({
+            //     error: "Survey does not exists",
+            // })
         }
+
+     
+        
+        const npsPath = resolve(__dirname, "..", "views", "emails", "npsMail.hbs");
+
+        const surveyUserAlreadyExists = await surveysUsersRepository.findOne({
+        where : {user_id: user.id, value: null},
+            relations: ["user", "survey"]
+        })
 
         const variables = {
             name: user.name,
             title: survey.title,
             description: survey.description,
-            user_id: user.id,
+            id: "",
             link: process.env.URL_MAIL
         }
-        
-        const npsPath = resolve(__dirname, "..", "views", "emails", "npsMail.hbs");
-
-        const surveyUserAlreadyExists = await surveysUsersRepository.findOne({
-        where : [{user_id: user.id}, {value: null}],
-            relations: ["user", "survey"]
-        })
 
         if(surveyUserAlreadyExists){
+            variables.id = surveyUserAlreadyExists.id
             await SendMailService.execute(email, survey.title, variables, npsPath);
             return res.json(surveyUserAlreadyExists)
         }
@@ -58,12 +65,9 @@ class SendMailController {
         })
 
         
-
+        variables.id = surveyUser.id
         await surveysUsersRepository.save(surveyUser)
 
-        
-
-        
         //Enviar e-mail para o usuario
         await SendMailService.execute(email,survey.title ,variables, npsPath )
 
